@@ -1,0 +1,116 @@
+name: Scaffold Project Structure
+
+on:
+  workflow_dispatch: # تفعيل التشغيل اليدوي من تبويب Actions
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # ضروري للسماح بعمل commit
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Monorepo Structure and Files
+        run: |
+          # 1. إنشاء المجلدات الرئيسية
+          mkdir -p apps/builder/app apps/builder/components apps/builder/lib
+          mkdir -p apps/client/app
+          mkdir -p packages/core/src packages/ui/src packages/code-generator/src
+          mkdir -p packages/workflow-engine/src packages/database/prisma
+          mkdir -p .github/workflows
+          mkdir -p scripts
+
+          # 2. إنشاء ملفات الإعداد في الجذر
+          cat > package.json << 'EOF'
+          {
+            "name": "my-app-builder",
+            "private": true,
+            "scripts": {
+              "build": "turbo run build",
+              "dev": "turbo run dev",
+              "lint": "turbo run lint"
+            },
+            "devDependencies": {
+              "turbo": "^2.3.0",
+              "typescript": "^5.7.2"
+            },
+            "packageManager": "pnpm@9.15.0"
+          }
+          EOF
+
+          cat > pnpm-workspace.yaml << 'EOF'
+          packages:
+            - "apps/*"
+            - "packages/*"
+          EOF
+
+          cat > turbo.json << 'EOF'
+          {
+            "$schema": "https://turborepo.dev/schema.json",
+            "tasks": {
+              "build": {
+                "dependsOn": ["^build"],
+                "outputs": [".next/**", "dist/**"]
+              },
+              "dev": { "cache": false, "persistent": true },
+              "lint": {}
+            }
+          }
+          EOF
+
+          # 3. إنشاء ملفات الحزم (أمثلة أساسية)
+          cat > packages/core/package.json << 'EOF'
+          {
+            "name": "@repo/core",
+            "version": "0.0.0",
+            "private": true,
+            "main": "./src/index.ts",
+            "types": "./src/index.ts"
+          }
+          EOF
+
+          cat > packages/core/src/index.ts << 'EOF'
+          export interface IApp {
+            id: string;
+            name: string;
+          }
+          EOF
+
+          cat > apps/builder/package.json << 'EOF'
+          {
+            "name": "@repo/builder",
+            "version": "0.0.0",
+            "private": true,
+            "scripts": {
+              "dev": "next dev",
+              "build": "next build"
+            },
+            "dependencies": {
+              "next": "^15.1.0",
+              "react": "^19.0.0",
+              "@repo/core": "workspace:*"
+            }
+          }
+          EOF
+
+          # 4. إضافة ملف .gitignore أساسي
+          cat > .gitignore << 'EOF'
+          node_modules/
+          .next/
+          dist/
+          .env
+          .DS_Store
+          EOF
+
+          echo "✅ Project structure created successfully."
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: scaffold monorepo structure [skip ci]" || echo "No changes to commit"
+          git push
