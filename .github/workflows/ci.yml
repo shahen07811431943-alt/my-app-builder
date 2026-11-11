@@ -1,0 +1,51 @@
+name: CI & Visual Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build-and-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Typecheck & Build
+        run: |
+          pnpm typecheck
+          pnpm build
+          
+      - name: Start Builder App & Expose URL
+        run: |
+          # تشغيل تطبيق البيلدر في الخلفية
+          pnpm --filter @repo/builder start & 
+          
+          # الانتظار 5 ثوانٍ حتى يعمل التطبيق
+          sleep 5 
+          
+          # إنشاء رابط مؤقت (Tunnel) للمنفذ 3000
+          npx localtunnel --port 3000 > tunnel.txt &
+          sleep 3
+          
+          # طباعة الرابط في السجل لكي تنسخه وتفتحه
+          TUNNEL_URL=$(grep -o 'https://.*' tunnel.txt)
+          echo "================================================="
+          echo "🔗 افتح هذا الرابط لرؤية الواجهة:"
+          echo "$TUNNEL_URL"
+          echo "================================================="
+          
+          # إبقاء السيرفر يعمل لمدة 5 دقائق حتى تتمكن من التجربة
+          sleep 300
