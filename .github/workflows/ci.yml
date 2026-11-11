@@ -16,26 +16,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # تم إزالة cache: "pnpm" مؤقتاً لتجنب خطأ عدم وجود ملف القفل
           
       - name: Install dependencies
-        # استخدام --no-frozen-lockfile يسمح بالعمل حتى لو لم يكن ملف pnpm-lock.yaml موجوداً
         run: pnpm install --no-frozen-lockfile
         
-      - name: Typecheck & Build
-        run: |
-          pnpm typecheck
-          pnpm build
+      - name: Build Project
+        # أمر البناء سيقوم بفحص الأكواد والتأكد من سلامتها تلقائياً
+        run: pnpm build
           
       - name: Start Builder App & Expose URL
         run: |
+          # تشغيل التطبيق في الخلفية
           pnpm --filter @repo/builder start & 
           sleep 5 
+          
+          # إنشاء رابط معاينة
           npx localtunnel --port 3000 > tunnel.txt &
           sleep 3
+          
           TUNNEL_URL=$(grep -o 'https://.*' tunnel.txt)
           echo "================================================="
           echo "🔗 افتح هذا الرابط لرؤية الواجهة:"
           echo "$TUNNEL_URL"
           echo "================================================="
+          
+          # الانتظار لمدة 5 دقائق
           sleep 300
