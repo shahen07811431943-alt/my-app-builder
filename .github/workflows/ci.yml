@@ -22,12 +22,9 @@ jobs:
         
       - name: Ensure Next.js App Files Exist (Auto-Fix)
         run: |
-          # إنشاء المجلد إذا لم يكن موجوداً
           mkdir -p apps/builder/app
           
-          # إنشاء ملف layout.tsx إذا كان مفقوداً
           if [ ! -f apps/builder/app/layout.tsx ]; then
-            echo "Creating layout.tsx..."
             cat > apps/builder/app/layout.tsx << 'EOF'
           export default function RootLayout({ children }: { children: React.ReactNode }) {
             return (
@@ -39,9 +36,7 @@ jobs:
           EOF
           fi
 
-          # إنشاء ملف page.tsx إذا كان مفقوداً
           if [ ! -f apps/builder/app/page.tsx ]; then
-            echo "Creating page.tsx..."
             cat > apps/builder/app/page.tsx << 'EOF'
           export default function Home() {
             return (
@@ -53,17 +48,19 @@ jobs:
           }
           EOF
           fi
+          
+      - name: Install Missing TypeScript Types
+        # هذا السطر الجديد سيقوم بتثبيت الحزم التي يطلبها Next.js
+        run: pnpm --filter @repo/builder add -D @types/react @types/react-dom @types/node typescript
 
       - name: Build Project
         run: pnpm build
           
       - name: Start Builder App & Expose URL
         run: |
-          # تشغيل التطبيق في الخلفية
           pnpm --filter @repo/builder start & 
           sleep 5 
           
-          # إنشاء رابط معاينة
           npx localtunnel --port 3000 > tunnel.txt &
           sleep 3
           
@@ -73,5 +70,4 @@ jobs:
           echo "$TUNNEL_URL"
           echo "================================================="
           
-          # الانتظار لمدة 5 دقائق
           sleep 300
