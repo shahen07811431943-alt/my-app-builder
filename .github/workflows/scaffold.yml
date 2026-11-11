@@ -13,22 +13,23 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Delete Old Structure & Create New Folders
+      - name: Clean Old Structure & Create Folders
         run: |
-          # 1. مسح جميع الملفات والمجلدات القديمة (ما عدا مجلد .git)
+          # مسح المجلدات والملفات القديمة (مع الحفاظ على .github و .git)
           echo "🧹 Deleting old structure..."
-          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
-
-          # 2. إنشاء هيكل المجلدات الجديد
+          rm -rf apps packages
+          rm -f package.json pnpm-workspace.yaml turbo.json tsconfig.base.json .gitignore .npmrc .env.example
+          
+          # إنشاء المجلدات الجديدة
           echo "📁 Creating new directory structure..."
-          mkdir -p .github/workflows
           mkdir -p apps/builder/app
           mkdir -p apps/client/app
           mkdir -p packages/core/src
           mkdir -p packages/ui/src
 
-      - name: Generate Root Files
+      - name: Generate All Project Files
         run: |
+          # 1. package.json
           cat > package.json << 'EOF'
           {
             "name": "my-app-builder",
@@ -52,12 +53,14 @@ jobs:
           }
           EOF
 
+          # 2. pnpm-workspace.yaml
           cat > pnpm-workspace.yaml << 'EOF'
           packages:
             - "apps/*"
             - "packages/*"
           EOF
 
+          # 3. turbo.json
           cat > turbo.json << 'EOF'
           {
             "$schema": "https://turborepo.dev/schema.json",
@@ -78,6 +81,7 @@ jobs:
           }
           EOF
 
+          # 4. tsconfig.base.json
           cat > tsconfig.base.json << 'EOF'
           {
             "compilerOptions": {
@@ -95,6 +99,7 @@ jobs:
           }
           EOF
 
+          # 5. .gitignore
           cat > .gitignore << 'EOF'
           node_modules/
           .next/
@@ -106,44 +111,18 @@ jobs:
           .DS_Store
           EOF
 
+          # 6. .npmrc
           cat > .npmrc << 'EOF'
           auto-install-peers=true
           strict-peer-dependencies=false
           EOF
 
+          # 7. .env.example
           cat > .env.example << 'EOF'
           NEXT_PUBLIC_APP_URL="http://localhost:3000"
           EOF
 
-      - name: Generate GitHub Workflow (CI)
-        run: |
-          cat > .github/workflows/ci.yml << 'EOF'
-          name: CI
-
-          on:
-            push:
-              branches: ["main"]
-            pull_request:
-
-          jobs:
-            build:
-              runs-on: ubuntu-latest
-              steps:
-                - uses: actions/checkout@v4
-                - uses: pnpm/action-setup@v4
-                  with:
-                    version: 9
-                - uses: actions/setup-node@v4
-                  with:
-                    node-version: 20
-                    cache: "pnpm"
-                - run: pnpm install --frozen-lockfile
-                - run: pnpm typecheck
-                - run: pnpm build
-          EOF
-
-      - name: Generate Core Package
-        run: |
+          # 8. Core Package (packages/core)
           cat > packages/core/package.json << 'EOF'
           {
             "name": "@repo/core",
@@ -184,8 +163,7 @@ jobs:
           }
           EOF
 
-      - name: Generate UI Package
-        run: |
+          # 9. UI Package (packages/ui)
           cat > packages/ui/package.json << 'EOF'
           {
             "name": "@repo/ui",
@@ -243,8 +221,7 @@ jobs:
           }
           EOF
 
-      - name: Generate Builder App
-        run: |
+          # 10. Builder App (apps/builder)
           cat > apps/builder/package.json << 'EOF'
           {
             "name": "@repo/builder",
@@ -335,8 +312,7 @@ jobs:
           }
           EOF
 
-      - name: Generate Client App
-        run: |
+          # 11. Client App (apps/client)
           cat > apps/client/package.json << 'EOF'
           {
             "name": "@repo/client",
@@ -406,6 +382,34 @@ jobs:
             );
           }
           EOF
+
+          # 12. CI Workflow
+          cat > .github/workflows/ci.yml << 'EOF'
+          name: CI
+
+          on:
+            push:
+              branches: ["main"]
+            pull_request:
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: pnpm/action-setup@v4
+                  with:
+                    version: 9
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: 20
+                    cache: "pnpm"
+                - run: pnpm install --frozen-lockfile
+                - run: pnpm typecheck
+                - run: pnpm build
+          EOF
+
+          echo "✅ All files generated successfully."
 
       - name: Commit and Push Changes
         run: |
