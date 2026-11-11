@@ -13,17 +13,22 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Create Monorepo Structure and Files
+      - name: Delete Old Structure & Create New Folders
         run: |
-          # 1. إنشاء المجلدات الرئيسية
-          mkdir -p apps/builder/app apps/builder/components apps/builder/lib
-          mkdir -p apps/client/app
-          mkdir -p packages/core/src packages/ui/src packages/code-generator/src
-          mkdir -p packages/workflow-engine/src packages/database/prisma
-          mkdir -p .github/workflows
-          mkdir -p scripts
+          # 1. مسح جميع الملفات والمجلدات القديمة (ما عدا مجلد .git)
+          echo "🧹 Deleting old structure..."
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
 
-          # 2. إنشاء ملفات الإعداد في الجذر
+          # 2. إنشاء هيكل المجلدات الجديد
+          echo "📁 Creating new directory structure..."
+          mkdir -p .github/workflows
+          mkdir -p apps/builder/app
+          mkdir -p apps/client/app
+          mkdir -p packages/core/src
+          mkdir -p packages/ui/src
+
+      - name: Generate Root Files
+        run: |
           cat > package.json << 'EOF'
           {
             "name": "my-app-builder",
@@ -31,13 +36,19 @@ jobs:
             "scripts": {
               "build": "turbo run build",
               "dev": "turbo run dev",
-              "lint": "turbo run lint"
+              "lint": "turbo run lint",
+              "typecheck": "turbo run typecheck",
+              "format": "prettier --write \"**/*.{ts,tsx,md}\""
             },
             "devDependencies": {
-              "turbo": "^2.3.0",
+              "prettier": "^3.4.2",
+              "turbo": "^2.3.3",
               "typescript": "^5.7.2"
             },
-            "packageManager": "pnpm@9.15.0"
+            "packageManager": "pnpm@9.15.1",
+            "engines": {
+              "node": ">=20"
+            }
           }
           EOF
 
@@ -53,22 +64,110 @@ jobs:
             "tasks": {
               "build": {
                 "dependsOn": ["^build"],
-                "outputs": [".next/**", "dist/**"]
+                "outputs": [".next/**", "!.next/cache/**", "dist/**"]
               },
-              "dev": { "cache": false, "persistent": true },
-              "lint": {}
+              "dev": {
+                "cache": false,
+                "persistent": true
+              },
+              "lint": {},
+              "typecheck": {
+                "dependsOn": ["^typecheck"]
+              }
             }
           }
           EOF
 
-          # 3. إنشاء ملفات الحزم (أمثلة أساسية)
+          cat > tsconfig.base.json << 'EOF'
+          {
+            "compilerOptions": {
+              "target": "ES2022",
+              "lib": ["ES2022", "DOM", "DOM.Iterable"],
+              "module": "ESNext",
+              "moduleResolution": "Bundler",
+              "esModuleInterop": true,
+              "strict": true,
+              "skipLibCheck": true,
+              "resolveJsonModule": true,
+              "isolatedModules": true,
+              "jsx": "preserve"
+            }
+          }
+          EOF
+
+          cat > .gitignore << 'EOF'
+          node_modules/
+          .next/
+          dist/
+          .turbo/
+          .env
+          .env.local
+          *.log
+          .DS_Store
+          EOF
+
+          cat > .npmrc << 'EOF'
+          auto-install-peers=true
+          strict-peer-dependencies=false
+          EOF
+
+          cat > .env.example << 'EOF'
+          NEXT_PUBLIC_APP_URL="http://localhost:3000"
+          EOF
+
+      - name: Generate GitHub Workflow (CI)
+        run: |
+          cat > .github/workflows/ci.yml << 'EOF'
+          name: CI
+
+          on:
+            push:
+              branches: ["main"]
+            pull_request:
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: pnpm/action-setup@v4
+                  with:
+                    version: 9
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: 20
+                    cache: "pnpm"
+                - run: pnpm install --frozen-lockfile
+                - run: pnpm typecheck
+                - run: pnpm build
+          EOF
+
+      - name: Generate Core Package
+        run: |
           cat > packages/core/package.json << 'EOF'
           {
             "name": "@repo/core",
             "version": "0.0.0",
             "private": true,
             "main": "./src/index.ts",
-            "types": "./src/index.ts"
+            "types": "./src/index.ts",
+            "scripts": {
+              "typecheck": "tsc --noEmit",
+              "lint": "echo 'no lint'"
+            },
+            "devDependencies": {
+              "typescript": "^5.7.2"
+            }
+          }
+          EOF
+
+          cat > packages/core/tsconfig.json << 'EOF'
+          {
+            "extends": "../../tsconfig.base.json",
+            "compilerOptions": {
+              "noEmit": true
+            },
+            "include": ["src/**/*.ts"]
           }
           EOF
 
@@ -76,41 +175,242 @@ jobs:
           export interface IApp {
             id: string;
             name: string;
+            slug: string;
+          }
+
+          export interface IUser {
+            id: string;
+            email: string;
           }
           EOF
 
+      - name: Generate UI Package
+        run: |
+          cat > packages/ui/package.json << 'EOF'
+          {
+            "name": "@repo/ui",
+            "version": "0.0.0",
+            "private": true,
+            "main": "./src/index.ts",
+            "types": "./src/index.ts",
+            "scripts": {
+              "typecheck": "tsc --noEmit",
+              "lint": "echo 'no lint'"
+            },
+            "dependencies": {
+              "react": "^19.0.0"
+            },
+            "devDependencies": {
+              "@types/react": "^19.0.2",
+              "typescript": "^5.7.2"
+            }
+          }
+          EOF
+
+          cat > packages/ui/tsconfig.json << 'EOF'
+          {
+            "extends": "../../tsconfig.base.json",
+            "compilerOptions": {
+              "jsx": "react-jsx",
+              "noEmit": true
+            },
+            "include": ["src/**/*.ts", "src/**/*.tsx"]
+          }
+          EOF
+
+          cat > packages/ui/src/index.ts << 'EOF'
+          export * from "./button";
+          EOF
+
+          cat > packages/ui/src/button.tsx << 'EOF'
+          import type { ButtonHTMLAttributes } from "react";
+
+          export function Button(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+            return (
+              <button
+                {...props}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#2563eb",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  ...props.style,
+                }}
+              />
+            );
+          }
+          EOF
+
+      - name: Generate Builder App
+        run: |
           cat > apps/builder/package.json << 'EOF'
           {
             "name": "@repo/builder",
             "version": "0.0.0",
             "private": true,
             "scripts": {
-              "dev": "next dev",
-              "build": "next build"
+              "dev": "next dev -p 3000",
+              "build": "next build",
+              "start": "next start -p 3000",
+              "lint": "next lint",
+              "typecheck": "tsc --noEmit"
             },
             "dependencies": {
-              "next": "^15.1.0",
+              "@repo/core": "workspace:*",
+              "@repo/ui": "workspace:*",
+              "next": "^15.1.3",
               "react": "^19.0.0",
-              "@repo/core": "workspace:*"
+              "react-dom": "^19.0.0"
+            },
+            "devDependencies": {
+              "@types/node": "^22.10.2",
+              "@types/react": "^19.0.2",
+              "@types/react-dom": "^19.0.2",
+              "typescript": "^5.7.2"
             }
           }
           EOF
 
-          # 4. إضافة ملف .gitignore أساسي
-          cat > .gitignore << 'EOF'
-          node_modules/
-          .next/
-          dist/
-          .env
-          .DS_Store
+          cat > apps/builder/next.config.ts << 'EOF'
+          import type { NextConfig } from "next";
+
+          const nextConfig: NextConfig = {
+            transpilePackages: ["@repo/core", "@repo/ui"],
+          };
+
+          export default nextConfig;
           EOF
 
-          echo "✅ Project structure created successfully."
+          cat > apps/builder/tsconfig.json << 'EOF'
+          {
+            "extends": "../../tsconfig.base.json",
+            "compilerOptions": {
+              "plugins": [{ "name": "next" }],
+              "noEmit": true,
+              "allowJs": true,
+              "incremental": true,
+              "paths": {
+                "@/*": ["./*"]
+              }
+            },
+            "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+            "exclude": ["node_modules"]
+          }
+          EOF
+
+          cat > apps/builder/app/globals.css << 'EOF'
+          body { margin: 0; font-family: system-ui, sans-serif; }
+          EOF
+
+          cat > apps/builder/app/layout.tsx << 'EOF'
+          import "./globals.css";
+
+          export const metadata = { title: "App Builder" };
+
+          export default function RootLayout({ children }: { children: React.ReactNode }) {
+            return (
+              <html lang="en">
+                <body>{children}</body>
+              </html>
+            );
+          }
+          EOF
+
+          cat > apps/builder/app/page.tsx << 'EOF'
+          import { Button } from "@repo/ui";
+          import type { IApp } from "@repo/core";
+
+          export default function Home() {
+            const demoApp: IApp = { id: "1", name: "Demo", slug: "demo" };
+            
+            return (
+              <main style={{ padding: "40px" }}>
+                <h1>Builder Dashboard</h1>
+                <p>App Name: {demoApp.name}</p>
+                <Button onClick={() => alert("Clicked!")}>Click Me</Button>
+              </main>
+            );
+          }
+          EOF
+
+      - name: Generate Client App
+        run: |
+          cat > apps/client/package.json << 'EOF'
+          {
+            "name": "@repo/client",
+            "version": "0.0.0",
+            "private": true,
+            "scripts": {
+              "dev": "next dev -p 3001",
+              "build": "next build",
+              "start": "next start -p 3001",
+              "lint": "next lint",
+              "typecheck": "tsc --noEmit"
+            },
+            "dependencies": {
+              "@repo/core": "workspace:*",
+              "next": "^15.1.3",
+              "react": "^19.0.0",
+              "react-dom": "^19.0.0"
+            },
+            "devDependencies": {
+              "@types/node": "^22.10.2",
+              "@types/react": "^19.0.2",
+              "@types/react-dom": "^19.0.2",
+              "typescript": "^5.7.2"
+            }
+          }
+          EOF
+
+          cat > apps/client/next.config.ts << 'EOF'
+          import type { NextConfig } from "next";
+
+          const nextConfig: NextConfig = {
+            transpilePackages: ["@repo/core"],
+          };
+
+          export default nextConfig;
+          EOF
+
+          cat > apps/client/tsconfig.json << 'EOF'
+          {
+            "extends": "../../tsconfig.base.json",
+            "compilerOptions": {
+              "plugins": [{ "name": "next" }],
+              "noEmit": true,
+              "paths": { "@/*": ["./*"] }
+            },
+            "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"]
+          }
+          EOF
+
+          cat > apps/client/app/layout.tsx << 'EOF'
+          export default function RootLayout({ children }: { children: React.ReactNode }) {
+            return (
+              <html lang="en">
+                <body>{children}</body>
+              </html>
+            );
+          }
+          EOF
+
+          cat > apps/client/app/page.tsx << 'EOF'
+          export default function ClientHome() {
+            return (
+              <main style={{ padding: "40px" }}>
+                <h1>Runtime Client</h1>
+                <p>This is where generated apps run.</p>
+              </main>
+            );
+          }
+          EOF
 
       - name: Commit and Push Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "chore: scaffold monorepo structure [skip ci]" || echo "No changes to commit"
+          git add -A
+          git commit -m "chore: wipe old structure and scaffold complete monorepo [skip ci]" || echo "No changes to commit"
           git push
